@@ -13,7 +13,7 @@ namespace Twister {
         std::string isotopicSymbol = "Invalid";
         double isotopicMass = 0.0;
         double atomicMass = 0.0;
-        double istopicMassU = 0.0;
+        double isotopicMassU = 0.0;
         double atomicMassU = 0.0;
     };
 
@@ -23,11 +23,11 @@ namespace Twister {
         NuclearMap();
         ~NuclearMap();
 
-        const NucleusData& GetData(uint32_t Z, uint32_t A);
+        const NucleusData& GetData(uint32_t Z, uint32_t A) const;
 
     private:
         //Using Szudzik pairing function to make unique id for two unsigned ints
-        uint32_t GenerateID(uint32_t Z, uint32_t A)
+        static constexpr uint32_t GenerateID(uint32_t Z, uint32_t A)
         {
     			return Z >= A ? (Z * Z + Z + A) : (A * A + Z);
         }
