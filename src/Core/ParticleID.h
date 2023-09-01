@@ -15,9 +15,10 @@ namespace Twister {
         ParticleID(const std::filesystem::path& path, const NuclearMap& nucMap);
         ~ParticleID();
 
-        std::vector<bool> IsInside(const std::vector<Guess>& guesses);
+        std::vector<bool> IsInside(const std::vector<Guess>& guesses) const;
         const bool IsValid() const { return m_isValid; }
         const std::string& GetName() const { return m_name; }
+        const NucleusData& GetParticleData() const { return m_particleData; }
 
     private:
         void ReadFile(const std::filesystem::path& path, const NuclearMap& nucMap);

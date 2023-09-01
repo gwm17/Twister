@@ -37,10 +37,11 @@ namespace Twister {
             guess.dEdx = row["dEdx"].get<double>();
             guess.dE = row["dE"].get<double>();
             guess.arcLength = row["arclength"].get<double>();
-            guess.direction = row['direction'].get<int>();
+            guess.direction = row["direction"].get<int>();
 
             result.push_back(guess);
         }
+        return result;
     }
 
     std::vector<Guess> ReadGuessesWithPID(const std::filesystem::path& path, const ParticleID& pid)

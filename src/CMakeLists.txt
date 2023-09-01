@@ -11,23 +11,24 @@ target_include_directories(Twister PRIVATE
 
 target_sources(Twister PRIVATE
     main.cpp
-    core/Cluster.h
-    core/Cluster.cpp
-    core/Guess.h
-    core/GuessReader.h
-    core/GuessReader.cpp
-    core/NuclearMap.h
-    core/NuclearMap.cpp
-    core/ParticleID.h
-    core/ParticleID.cpp
-    core/HDFReader.h
-    core/HDFReader.cpp
-    core/Target.h
-    core/Target.cpp
-    core/Precision.h
-    core/Solver.h
-    core/Solver.cpp
-    core/Constants.h
+    Core/Cluster.h
+    Core/Cluster.cpp
+    Core/Guess.h
+    Core/GuessReader.h
+    Core/GuessReader.cpp
+    Core/NuclearMap.h
+    Core/NuclearMap.cpp
+    Core/ParticleID.h
+    Core/ParticleID.cpp
+    Core/HDFReader.h
+    Core/HDFReader.cpp
+    Core/Target.h
+    Core/Target.cpp
+    Core/Precision.h
+    Core/Solver.h
+    Core/Solver.cpp
+    Core/Constants.h
+    Utils/Timer.h
 )
 
 target_link_libraries(Twister ${HDF5_CXX_LIBRARIES} GSL::gsl nlohmann_json::nlohmann_json catima::catima csv HighFive)
