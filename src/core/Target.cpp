@@ -1,5 +1,6 @@
 #include "Target.h"
 #include "Precision.h"
+#include "Constants.h"
 
 namespace Twister {
 
@@ -27,6 +28,15 @@ namespace Twister {
         catima::Projectile particle(projectile.isotopicMassU, projectile.Z);
         particle.T = energy / projectile.isotopicMassU;
         return catima::dedx(particle, m_material);
+    }
+
+    //Energy in MeV, returns accel in m/s^2
+    double Target::GetAccelerationSI(const NucleusData& projectile, double energy)
+    {
+        double dedx = dEdx(projectile, energy);
+        double massKg = projectile.isotopicMass * Constants::MeV2kg;
+        //dE/dx -> MeV/g/cm^2 * J/MeV -> J/g/cm^2 * g/cm^3 -> J/cm * cm/m -> kg m/s^2 * 1/kg -> m/s^2
+        return (dedx * Constants::MeV2Joule * GetDensity() * 100.0) / massKg;
     }
 
     double Target::GetPathLength(const NucleusData& projectile, double startEnergy, double finalEnergy)

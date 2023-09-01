@@ -4,6 +4,8 @@
 #include "NuclearMap.h"
 #include "GuessReader.h"
 
+#include <gsl/gsl_odeiv2.h>
+
 namespace Twister {
 
     struct EOMParams
@@ -17,15 +19,19 @@ namespace Twister {
     class Solver
     {
     public:
-        Solver(Guess& guess, double Bfield, double Efield, const Target& target, const NucleusData& ejectile);
+        Solver(double Bfield, double Efield, const Target& target, const NucleusData& ejectile);
         ~Solver();
 
-        void Run(const std::vector<double>& times);
+        void Run(const Guess& initialGuess, const std::vector<double>& times, std::vector<std::vector<double>>& results);
 
     private:
         std::vector<double> ConvertGuessToInitialValue();
 
-        Guess m_initialGuess;
         EOMParams m_eomParams;
+
+        gsl_odeiv2_system m_system;
+        gsl_odeiv2_driver* m_driver;
+
+        static constexpr std::size_t s_sizeOfState = 6; // x,y,z,vx,vy,vz
     };
 }

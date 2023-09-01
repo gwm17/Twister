@@ -13,6 +13,7 @@ target_sources(Twister PRIVATE
     main.cpp
     core/Cluster.h
     core/Cluster.cpp
+    core/Guess.h
     core/GuessReader.h
     core/GuessReader.cpp
     core/NuclearMap.h
@@ -25,6 +26,7 @@ target_sources(Twister PRIVATE
     core/Target.cpp
     core/Precision.h
     core/Solver.h
+    core/Solver.cpp
     core/Constants.h
 )
 

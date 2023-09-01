@@ -3,19 +3,19 @@
 #include <filesystem>
 #include <vector>
 #include <string>
-#include "GuessReader.h"
+#include "Guess.h"
 #include "NuclearMap.h"
 #include "nlohmann/json.hpp"
 
 namespace Twister {
-
+    
     class ParticleID
     {
     public:
         ParticleID(const std::filesystem::path& path, const NuclearMap& nucMap);
         ~ParticleID();
 
-        std::vector<bool> IsInside(const std::vector<Guess>& guesses) const;
+        std::vector<bool> IsInside(const std::vector<Guess>& guesses);
         const bool IsValid() const { return m_isValid; }
         const std::string& GetName() const { return m_name; }
 

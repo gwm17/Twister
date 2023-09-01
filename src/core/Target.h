@@ -16,6 +16,8 @@ namespace Twister {
 	 	~Target();
 
 	 	double dEdx(const NucleusData& data, double energy);
+		//Takes in energy in MeV -> returns m/s^2
+		double GetAccelerationSI(const NucleusData& data, double energy);
 		double GetPathLength(const NucleusData& data, double startEnergy, double finalEnergy); //Returns pathlength for a particle w/ startE to reach finalE (cm)
 		double GetAngularStraggling(const NucleusData& data, double energy); //Returns planar angular straggling in radians for a particle with energy
 	 	inline double GetDensity() { return m_material.density(); } //g/cm^3
