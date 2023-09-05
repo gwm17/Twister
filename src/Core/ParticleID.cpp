@@ -36,9 +36,9 @@ namespace Twister {
             return;
         }
 
-        std::vector<std::vector<double>> verticies = jsonData["verticies"];
+        std::vector<std::vector<double>> vertices = jsonData["vertices"];
 
-        for (auto& vertex : verticies)
+        for (auto& vertex : vertices)
         {
             m_xPoints.push_back(vertex[0]);
             m_yPoints.push_back(vertex[1]);

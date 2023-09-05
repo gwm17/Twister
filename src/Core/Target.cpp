@@ -2,6 +2,8 @@
 #include "Precision.h"
 #include "Constants.h"
 
+#include <iostream>
+
 namespace Twister {
 
     //z,a: istope list of material compound, stoich: compound stoichometry, density: material density in g/cm^3
@@ -9,7 +11,7 @@ namespace Twister {
 	{
 		for(size_t i=0; i<z.size(); i++)
 		{
-			m_material.add_element(nucMap.GetData(z[i], a[i]).atomicMass, z[i], stoich[i]);
+			m_material.add_element(nucMap.GetData(z[i], a[i]).atomicMassU, z[i], stoich[i]);
 		}
 
 		m_material.density(density); //g/cm^3

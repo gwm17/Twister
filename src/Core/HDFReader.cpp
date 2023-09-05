@@ -35,7 +35,7 @@ namespace Twister {
 
     Cluster HDFReader::GetCluster(int event, int clusterIndex)
     {
-        HighFive::Group localCluster = m_topGroup.getGroup(s_eventPrefix + std::to_string(event)).getGroup(s_localClusterPrefix + std::to_string(clusterIndex));
+        HighFive::Group localCluster = m_topGroup.getGroup(s_eventPrefix + std::string("_") + std::to_string(event)).getGroup(s_localClusterPrefix + std::string("_") + std::to_string(clusterIndex));
         int clusterLabel = localCluster.getAttribute("label").read<int>();
         std::vector<std::vector<double>> cloud = localCluster.getDataSet("cloud").read<std::vector<std::vector<double>>>();
         return Cluster(cloud, clusterLabel, event, clusterIndex);

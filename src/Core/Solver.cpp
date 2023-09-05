@@ -1,5 +1,6 @@
 #include "Solver.h"
 #include "Constants.h"
+#include "Precision.h"
 
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_errno.h>
@@ -8,28 +9,27 @@
 
 namespace Twister {
 
-    int EquationsOfMotion(double t, const double state[], double f[], void* params)
+    int EquationsOfMotion(double t, const double y[], double dydt[], void* params)
     {
         (void)(t); //Ignore unused param warning
         EOMParams* paramHandle = static_cast<EOMParams*>(params);
 
-        double speed = std::sqrt(state[3]*state[3] + state[4]*state[4] + state[5]*state[5]);
-        double unitVec[3] = {state[3]/speed, state[4]/speed, state[5]/speed};
+        double speed = std::sqrt(y[3]*y[3] + y[4]*y[4] + y[5]*y[5]);
+        double unitVec[3] = {y[3]/speed, y[4]/speed, y[5]/speed};
 
-        double momentum = speed / Constants::speedOfLight * paramHandle->ejectile.isotopicMass; // MeV/c
-        double kineticEnergy = std::sqrt(momentum * momentum + paramHandle->ejectile.isotopicMass * paramHandle->ejectile.isotopicMass) - paramHandle->ejectile.isotopicMass;
+        double kineticEnergy = paramHandle->ejectile.isotopicMass * (1.0/std::sqrt(1.0 - std::pow(speed / Constants::speedOfLight, 2.0)) - 1.0); //MeV
         //dE/dx -> MeV/g/cm^2 * J/MeV -> J/g/cm^2 * g/cm^3 -> J/cm * cm/m -> kg m/s^2 * 1/kg -> m/s^2
         double decel = paramHandle->target.GetAccelerationSI(paramHandle->ejectile, kineticEnergy);
         double qPerM = paramHandle->ejectile.Z * Constants::unitCharge / (paramHandle->ejectile.isotopicMass * Constants::MeV2kg); // C/kg
 
         //dr/dt = v
-        f[0] = state[3]; //drx/dt
-        f[1] = state[4]; //dry/dt
-        f[2] = state[5]; //drz/dt
+        dydt[0] = y[3]; //drx/dt
+        dydt[1] = y[4]; //dry/dt
+        dydt[2] = y[5]; //drz/dt
         //dv/dt = q/m * (E + vxB) - stopping
-        f[3] = qPerM * paramHandle->Bfield * state[4] - decel * unitVec[0]; //dvx/dt
-        f[4] = qPerM * -1.0 * paramHandle->Bfield * state[3] - decel * unitVec[1]; //dvy/dt
-        f[5] = qPerM * paramHandle->Efield - decel * unitVec[2]; //dvz/dt
+        dydt[3] = qPerM * paramHandle->Bfield * y[4] - decel * unitVec[0]; //dvx/dt
+        dydt[4] = qPerM * -1.0 * paramHandle->Bfield * y[3] - decel * unitVec[1]; //dvy/dt
+        dydt[5] = qPerM * paramHandle->Efield - decel * unitVec[2]; //dvz/dt
 
         return GSL_SUCCESS;
     }
@@ -113,7 +113,7 @@ namespace Twister {
 
         m_system = {EquationsOfMotion, Jacobian, 6, &m_eomParams};
         //Specify precision in terms of  x,y,z not vx,vy,vz
-        m_driver = gsl_odeiv2_driver_alloc_y_new(&m_system, gsl_odeiv2_step_rk8pd, 1.0e-9, 1.0e-6, 0.0);
+        m_driver = gsl_odeiv2_driver_alloc_y_new(&m_system, gsl_odeiv2_step_rkf45, 1.0e-9, 1.0e-6, 0.0);
     }
 
     Solver::~Solver()
@@ -122,11 +122,11 @@ namespace Twister {
             gsl_odeiv2_driver_free(m_driver);
     }
 
-    void Solver::Run(const Guess& initialGuess, const std::vector<double>& times, std::vector<std::vector<double>>& results)
+    void Solver::Run(const Guess& initialGuess, const std::vector<double>& distanceSteps, std::vector<std::vector<double>>& results)
     {
         gsl_odeiv2_driver_reset(m_driver);
 
-        if (times.size() != results.size())
+        if (distanceSteps.size() != results.size())
         {
             std::cerr << "Error at Solver::Run, the time vector and the result vector do not have the same length! Pre-allocate the result vector." << std::endl;
             return;
@@ -139,10 +139,11 @@ namespace Twister {
         }
 
         //Create the initial state from the guessed values
-        double t = 0.0;
+        double tInitial = 0.0;
+        double tFinal = 0.0;
         double y[6] = {0., 0., 0., 0., 0., 0.}; //x, y, z, vx, vy, vz
         double speed = (initialGuess.brho * 10.0 * 100.0 * Constants::QBrho2P * m_eomParams.ejectile.Z) / m_eomParams.ejectile.isotopicMass; //brho T*m -> kG*cm
-        speed *= Constants::speedOfLight; //Convert to m/s
+	    speed *= Constants::speedOfLight; //Convert to m/s
 
         y[0] = initialGuess.vertexX * 0.001; //Convert to m
         y[1] = initialGuess.vertexY * 0.001;
@@ -151,13 +152,24 @@ namespace Twister {
         y[4] = speed * std::sin(initialGuess.polar) * std::sin(initialGuess.azimuthal);
         y[5] = speed * std::cos(initialGuess.polar);
 
-        for (std::size_t i=0; i<times.size(); i++)
+        double kineticEnergy;
+
+        for (std::size_t i=0; i<distanceSteps.size(); i++)
         {
+            speed = std::sqrt(y[3]*y[3] + y[4]*y[4] + y[5]*y[5]);
+            tFinal = tInitial + distanceSteps[i] / speed;
             //Solve the ode
-            gsl_odeiv2_driver_apply(m_driver, &t, times[i], y);
+            gsl_odeiv2_driver_apply(m_driver, &tInitial, tFinal, y);
             //Save the result
             for (int j=0; j<s_sizeOfState; j++)
                 results[i][j] = y[j];
+            
+            speed = std::sqrt(y[3]*y[3] + y[4]*y[4] + y[5]*y[5]);
+            kineticEnergy = m_eomParams.ejectile.isotopicMass * (1.0/std::sqrt(1.0 - std::pow(speed / Constants::speedOfLight, 2.0)) - 1.0); //MeV
+            if (Precision::IsFloatAlmostEqual(kineticEnergy, 0.0, 2.0e-6))
+            {
+                break;
+            }
         }
 
     }
