@@ -27,6 +27,28 @@ namespace Twister {
         
         m_isMeters = true;
     }
+
+    //Get only x,y,z data in meters
+    std::vector<std::vector<double>> Cluster::GetCloudPoints() const 
+    {
+        std::vector<std::vector<double>> points;
+        points.resize(m_cloud.size());
+
+        double scale = 1.0;
+        if (!m_isMeters)
+            scale = 0.001;
+
+        for (std::size_t i=0; i<m_cloud.size(); i++)
+        {
+            points[i].resize(3);
+            points[i][0] = m_cloud[i][0] * scale;
+            points[i][1] = m_cloud[i][1] * scale;
+            points[i][2] = m_cloud[i][2] * scale;
+        }
+
+        return points;
+    }
+
     std::vector<double> Cluster::GetDistanceSteps(const Guess& guess) const
     {
         std::vector<double> steps;

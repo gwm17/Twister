@@ -31,9 +31,9 @@ int main(int argc, const char** argv)
 
     std::cout << "Event: " << chosenGuess.event << " Cluster Index: " << chosenGuess.clusterIndex << std::endl;
 
-    double magneticField = 2.9; //Tm
-    double electricField = 6000.0; //Vm
-    double density = 5.47e-6; //Gas density
+    double magneticField = 3.0; //Tm
+    double electricField = 45000.0; //Vm
+    double density = 6.65e-6; //Gas density
 
     std::cout << "Loading target..." << std::endl;
     Twister::Target target({1}, {2}, {2}, density, nucMap);
@@ -50,22 +50,16 @@ int main(int argc, const char** argv)
 
     cluster.ConvertCloudToMeters();
     std::vector<double> steps = cluster.GetDistanceSteps(chosenGuess);
-    std::vector<std::vector<double>> results;
-    results.resize(steps.size());
-    for (auto& r : results)
-    {
-        r.resize(6, 0.0);
-    }
 
     std::cout << "Running solver..." << std::endl;
     Twister::Timer timer("Solver");
-    solver.Run(chosenGuess, steps, results);
+    solver.SolveSystem(chosenGuess, steps);
     timer.Stop();
 
     std::cout << "Writing result..." << std::endl;
     std::ofstream output("test.csv");
     output << "x,y,z,vx,vy,vz" << std::endl;
-    for(auto& point : results)
+    for(auto& point : solver.GetTrajectory())
     {
         if (point[0]  == 0.0 && point[1] == 0.0 && point[2] == 0.0)
             continue;

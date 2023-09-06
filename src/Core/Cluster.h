@@ -13,6 +13,7 @@ namespace Twister {
         ~Cluster();
 
         const std::vector<std::vector<double>>& GetCloud() const { return m_cloud; }
+        std::vector<std::vector<double>> GetCloudPoints() const;
         const int GetLabel() const { return m_label; }
         const int GetEvent() const { return m_event; }
         const int GetIndex() const { return m_index; }

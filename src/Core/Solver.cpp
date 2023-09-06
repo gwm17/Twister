@@ -2,8 +2,11 @@
 #include "Constants.h"
 #include "Precision.h"
 
+#include <gsl/gsl_odeiv2.h>
 #include <gsl/gsl_matrix.h>
+#include <gsl/gsl_vector.h>
 #include <gsl/gsl_errno.h>
+#include <gsl/gsl_multimin.h>
 
 #include <iostream>
 
@@ -103,54 +106,29 @@ namespace Twister {
         return GSL_SUCCESS;
     }
 
-    Solver::Solver(double Bfield, double Efield, const Target& target, const NucleusData& ejectile) :
-        m_driver(nullptr)
+    void Solve(const gsl_vector* initialGuess, const std::vector<double>& distanceSteps, std::vector<std::vector<double>>& trajectory, EOMParams& params)
     {
-        m_eomParams.Bfield = -1.0 * Bfield;
-        m_eomParams.Efield = -1.0 * Efield;
-        m_eomParams.target = target;
-        m_eomParams.ejectile = ejectile;
+        static constexpr int sizeOfState = 6;
 
-        m_system = {EquationsOfMotion, Jacobian, 6, &m_eomParams};
-        //Specify precision in terms of  x,y,z not vx,vy,vz
-        m_driver = gsl_odeiv2_driver_alloc_y_new(&m_system, gsl_odeiv2_step_rkf45, 1.0e-9, 1.0e-6, 0.0);
-    }
-
-    Solver::~Solver()
-    {
-        if (m_driver != nullptr)
-            gsl_odeiv2_driver_free(m_driver);
-    }
-
-    void Solver::Run(const Guess& initialGuess, const std::vector<double>& distanceSteps, std::vector<std::vector<double>>& results)
-    {
-        gsl_odeiv2_driver_reset(m_driver);
-
-        if (distanceSteps.size() != results.size())
-        {
-            std::cerr << "Error at Solver::Run, the time vector and the result vector do not have the same length! Pre-allocate the result vector." << std::endl;
-            return;
-        }
-
-        if (results[0].size() != s_sizeOfState)
-        {
-            std::cerr << "Error at Solver::Run, the result vector is not large enough to hold the state! Each result is of size " << s_sizeOfState << ". Pre-allocate the result vector." << std::endl;
-            return;
-        }
+        gsl_odeiv2_system system  = {EquationsOfMotion, Jacobian, 6, &params};
+        gsl_odeiv2_driver* driver = gsl_odeiv2_driver_alloc_y_new(&system, gsl_odeiv2_step_rkf45, 1.0e-9, 1.0e-6, 0.0);
 
         //Create the initial state from the guessed values
         double tInitial = 0.0;
         double tFinal = 0.0;
         double y[6] = {0., 0., 0., 0., 0., 0.}; //x, y, z, vx, vy, vz
-        double speed = (initialGuess.brho * 10.0 * 100.0 * Constants::QBrho2P * m_eomParams.ejectile.Z) / m_eomParams.ejectile.isotopicMass; //brho T*m -> kG*cm
+        double polar = gsl_vector_get(initialGuess, 3);
+        double azimuthal = gsl_vector_get(initialGuess, 4);
+        double brho = gsl_vector_get(initialGuess, 5);
+        double speed = (brho * 10.0 * 100.0 * Constants::QBrho2P * params.ejectile.Z) / params.ejectile.isotopicMass; //brho T*m -> kG*cm
 	    speed *= Constants::speedOfLight; //Convert to m/s
 
-        y[0] = initialGuess.vertexX * 0.001; //Convert to m
-        y[1] = initialGuess.vertexY * 0.001;
-        y[2] = initialGuess.vertexZ * 0.001;
-        y[3] = speed * std::sin(initialGuess.polar) * std::cos(initialGuess.azimuthal);
-        y[4] = speed * std::sin(initialGuess.polar) * std::sin(initialGuess.azimuthal);
-        y[5] = speed * std::cos(initialGuess.polar);
+        y[0] = gsl_vector_get(initialGuess, 0) * 0.001; //Convert to m
+        y[1] = gsl_vector_get(initialGuess, 1) * 0.001;
+        y[2] = gsl_vector_get(initialGuess, 2) * 0.001;
+        y[3] = speed * std::sin(polar) * std::cos(azimuthal);
+        y[4] = speed * std::sin(polar) * std::sin(azimuthal);
+        y[5] = speed * std::cos(polar);
 
         double kineticEnergy;
 
@@ -159,19 +137,149 @@ namespace Twister {
             speed = std::sqrt(y[3]*y[3] + y[4]*y[4] + y[5]*y[5]);
             tFinal = tInitial + distanceSteps[i] / speed;
             //Solve the ode
-            gsl_odeiv2_driver_apply(m_driver, &tInitial, tFinal, y);
+            gsl_odeiv2_driver_apply(driver, &tInitial, tFinal, y);
             //Save the result
-            for (int j=0; j<s_sizeOfState; j++)
-                results[i][j] = y[j];
+            for (int j=0; j<sizeOfState; j++)
+                trajectory[i][j] = y[j];
             
             speed = std::sqrt(y[3]*y[3] + y[4]*y[4] + y[5]*y[5]);
-            kineticEnergy = m_eomParams.ejectile.isotopicMass * (1.0/std::sqrt(1.0 - std::pow(speed / Constants::speedOfLight, 2.0)) - 1.0); //MeV
+            kineticEnergy = params.ejectile.isotopicMass * (1.0/std::sqrt(1.0 - std::pow(speed / Constants::speedOfLight, 2.0)) - 1.0); //MeV
             if (Precision::IsFloatAlmostEqual(kineticEnergy, 0.0, 2.0e-6))
             {
                 break;
             }
         }
 
+        gsl_odeiv2_driver_free(driver);
+    }
+
+    double Objective(const gsl_vector* guess, void* params)
+    {
+        ObjectiveParams* oParams = static_cast<ObjectiveParams*>(params);
+        Solve(guess, oParams->steps, oParams->trajectoryStorage, oParams->eomParams);
+        double sumResiduals = 0.0;
+        double n = oParams->trajectoryStorage.size();
+        for (std::size_t i=0; i<oParams->trajectoryStorage.size(); i++)
+        {
+            auto& trajPoint = oParams->trajectoryStorage[i];
+            auto& dataPoint = oParams->data[i];
+            sumResiduals += std::sqrt(std::pow(trajPoint[0] - dataPoint[0], 2.0) + std::pow(trajPoint[1] - dataPoint[1], 2.0) + std::pow(trajPoint[2] - dataPoint[2], 2.0));
+        }
+        return sumResiduals / n;
+    }
+
+    std::size_t Minimize(gsl_vector* guess, const ObjectiveParams& params)
+    {
+        static constexpr int sizeOfParameters = 6;
+        static constexpr std::size_t maxIters = 1000;
+        const gsl_multimin_fminimizer_type* type = gsl_multimin_fminimizer_nmsimplex2;
+        gsl_multimin_function function;
+
+        function.n = sizeOfParameters;
+        function.f = Objective;
+        function.params = (void*) &params; // gross
+
+        gsl_vector* parameterStepSizes = gsl_vector_alloc(sizeOfParameters);
+        gsl_vector_set(parameterStepSizes, 0, 0.001); //1mm
+        gsl_vector_set(parameterStepSizes, 1, 0.001); //1mm
+        gsl_vector_set(parameterStepSizes, 2, 0.001); //1mm
+        gsl_vector_set(parameterStepSizes, 3, 0.09); //~5degrees
+        gsl_vector_set(parameterStepSizes, 4, 0.09); //~5degrees
+        gsl_vector_set(parameterStepSizes, 5, 0.2); //Tm
+
+        gsl_multimin_fminimizer* minimizer = gsl_multimin_fminimizer_alloc(type, sizeOfParameters);
+        gsl_multimin_fminimizer_set(minimizer, &function, guess, parameterStepSizes);
+
+        double size;
+        int status = GSL_CONTINUE;
+        std::size_t nIter = 0;
+        while(status == GSL_CONTINUE && nIter < maxIters)
+        {
+            nIter++;
+            //Iterate
+            status = gsl_multimin_fminimizer_iterate(minimizer);
+
+            if (status)
+                break;
+
+            size = gsl_multimin_fminimizer_size(minimizer);
+            status = gsl_multimin_test_size(size, 1.0e-2);
+        }
+
+        gsl_vector_free(parameterStepSizes);
+        gsl_multimin_fminimizer_free(minimizer);
+
+        if (status == GSL_SUCCESS)
+        {
+            std::cout << "Minimizer successfully converged!" << std::endl;
+        }
+        else
+        {
+            std::cerr << "Minimizer did not converge! GSL code: " << status << std::endl;
+        }
+
+        return nIter;
+    }
+
+    Solver::Solver(double Bfield, double Efield, const Target& target, const NucleusData& ejectile)
+    {
+        m_params.eomParams.Bfield = -1.0 * Bfield;
+        m_params.eomParams.Efield = -1.0 * Efield;
+        m_params.eomParams.target = target;
+        m_params.eomParams.ejectile = ejectile;
+    }
+
+    Solver::~Solver()
+    {
+    }
+
+    void Solver::SolveSystem(const Guess& initialGuess, const std::vector<double>& steps)
+    {
+        gsl_vector* guessVector = gsl_vector_alloc(s_sizeOfState);
+        gsl_vector_set(guessVector, 0, initialGuess.vertexX * 0.001);
+        gsl_vector_set(guessVector, 1, initialGuess.vertexY * 0.001);
+        gsl_vector_set(guessVector, 2, initialGuess.vertexZ * 0.001);
+        gsl_vector_set(guessVector, 3, initialGuess.polar);
+        gsl_vector_set(guessVector, 4, initialGuess.azimuthal);
+        gsl_vector_set(guessVector, 5, initialGuess.brho);
+
+        m_params.steps = steps;
+        m_params.trajectoryStorage.resize(steps.size());
+        for (auto& point : m_params.trajectoryStorage)
+            point.resize(s_sizeOfState, 0.0);
+
+        Solve(guessVector, m_params.steps, m_params.trajectoryStorage, m_params.eomParams);
+    }
+
+    Guess Solver::OptimizeSystem(const Guess& initialGuess, const std::vector<double>& steps, const Cluster& data)
+    {
+        gsl_vector* guessVector = gsl_vector_alloc(s_sizeOfState);
+        gsl_vector_set(guessVector, 0, initialGuess.vertexX * 0.001);
+        gsl_vector_set(guessVector, 1, initialGuess.vertexY * 0.001);
+        gsl_vector_set(guessVector, 2, initialGuess.vertexZ * 0.001);
+        gsl_vector_set(guessVector, 3, initialGuess.polar);
+        gsl_vector_set(guessVector, 4, initialGuess.azimuthal);
+        gsl_vector_set(guessVector, 5, initialGuess.brho);
+        m_params.steps = steps;
+        m_params.data = data.GetCloudPoints();
+        m_params.trajectoryStorage.resize(steps.size());
+        for (auto& point : m_params.trajectoryStorage)
+            point.resize(s_sizeOfState, 0.0);
+        
+        std::size_t nIter = Minimize(guessVector, m_params);
+
+        std::cout << "Minimizer took " << nIter << " iterations." << std::endl;
+
+        Guess bestGuess;
+        bestGuess.vertexX = gsl_vector_get(guessVector, 0) * 1000.0;
+        bestGuess.vertexY = gsl_vector_get(guessVector, 1) * 1000.0;
+        bestGuess.vertexZ = gsl_vector_get(guessVector, 2) * 1000.0;
+        bestGuess.polar = gsl_vector_get(guessVector, 3);
+        bestGuess.azimuthal = gsl_vector_get(guessVector, 4);
+        bestGuess.azimuthal = gsl_vector_get(guessVector, 5);
+
+        gsl_vector_free(guessVector);
+        return bestGuess;
     }
 
 }
